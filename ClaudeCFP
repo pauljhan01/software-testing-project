@@ -1,0 +1,747 @@
+import org.junit.jupiter.api.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.*;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
+/**
+ * Comprehensive test suite for java.util.PriorityQueue (OpenJDK implementation)
+ * Tests cover all public methods, constructors, and edge cases to maximize code coverage
+ */
+public class ClaudeCFP {
+
+    // ==================== Constructor Tests ====================
+    
+    @Test
+    @DisplayName("Test default constructor")
+    public void testDefaultConstructor() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertNotNull(pq);
+        assertEquals(0, pq.size());
+        assertTrue(pq.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Test constructor with initial capacity")
+    public void testConstructorWithInitialCapacity() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(20);
+        assertNotNull(pq);
+        assertEquals(0, pq.size());
+    }
+
+    @Test
+    @DisplayName("Test constructor with invalid initial capacity")
+    public void testConstructorWithInvalidCapacity() {
+        assertThrows(IllegalArgumentException.class, () -> new PriorityQueue<>(0));
+        assertThrows(IllegalArgumentException.class, () -> new PriorityQueue<>(-1));
+    }
+
+    @Test
+    @DisplayName("Test constructor with comparator")
+    public void testConstructorWithComparator() {
+        Comparator<Integer> reverseOrder = Comparator.reverseOrder();
+        PriorityQueue<Integer> pq = new PriorityQueue<>(reverseOrder);
+        assertNotNull(pq);
+        assertEquals(reverseOrder, pq.comparator());
+    }
+
+    @Test
+    @DisplayName("Test constructor with capacity and comparator")
+    public void testConstructorWithCapacityAndComparator() {
+        Comparator<Integer> naturalOrder = Comparator.naturalOrder();
+        PriorityQueue<Integer> pq = new PriorityQueue<>(15, naturalOrder);
+        assertNotNull(pq);
+        assertEquals(naturalOrder, pq.comparator());
+    }
+
+    @Test
+    @DisplayName("Test constructor with collection")
+    public void testConstructorWithCollection() {
+        List<Integer> list = Arrays.asList(5, 2, 8, 1, 9);
+        PriorityQueue<Integer> pq = new PriorityQueue<>(list);
+        assertEquals(5, pq.size());
+        assertEquals(1, pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test constructor with null collection")
+    public void testConstructorWithNullCollection() {
+        assertThrows(NullPointerException.class, () -> {
+            List<Integer> list = Arrays.asList(1, null, 3);
+            new PriorityQueue<>(list);
+        });
+    }
+
+    @Test
+    @DisplayName("Test constructor with SortedSet")
+    public void testConstructorWithSortedSet() {
+        SortedSet<Integer> set = new TreeSet<>(Arrays.asList(5, 2, 8, 1, 9));
+        PriorityQueue<Integer> pq = new PriorityQueue<>(set);
+        assertEquals(5, pq.size());
+        assertEquals(1, pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test constructor with PriorityQueue")
+    public void testConstructorWithPriorityQueue() {
+        PriorityQueue<Integer> original = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        PriorityQueue<Integer> copy = new PriorityQueue<>(original);
+        assertEquals(original.size(), copy.size());
+        assertEquals(original.peek(), copy.peek());
+    }
+
+    @Test
+    @DisplayName("Test constructor with PriorityQueue with comparator")
+    public void testConstructorWithPriorityQueueWithComparator() {
+        PriorityQueue<Integer> original = new PriorityQueue<>(Comparator.reverseOrder());
+        original.addAll(Arrays.asList(5, 2, 8, 1, 9));
+        PriorityQueue<Integer> copy = new PriorityQueue<>(original);
+        assertEquals(original.comparator(), copy.comparator());
+        assertEquals(original.peek(), copy.peek());
+    }
+
+    // ==================== Add/Offer Tests ====================
+
+    @Test
+    @DisplayName("Test add method")
+    public void testAdd() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertTrue(pq.add(5));
+        assertTrue(pq.add(2));
+        assertTrue(pq.add(8));
+        assertEquals(3, pq.size());
+        assertEquals(2, pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test add null element")
+    public void testAddNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertThrows(NullPointerException.class, () -> pq.add(null));
+    }
+
+    @Test
+    @DisplayName("Test offer method")
+    public void testOffer() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertTrue(pq.offer(5));
+        assertTrue(pq.offer(2));
+        assertTrue(pq.offer(8));
+        assertEquals(3, pq.size());
+        assertEquals(2, pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test offer null element")
+    public void testOfferNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertThrows(NullPointerException.class, () -> pq.offer(null));
+    }
+
+    @Test
+    @DisplayName("Test add triggers growth")
+    public void testAddTriggersGrowth() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(2);
+        for (int i = 0; i < 100; i++) {
+            pq.add(i);
+        }
+        assertEquals(100, pq.size());
+    }
+
+    // ==================== Peek/Poll Tests ====================
+
+    @Test
+    @DisplayName("Test peek on empty queue")
+    public void testPeekEmpty() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertNull(pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test peek on non-empty queue")
+    public void testPeek() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertEquals(1, pq.peek());
+        assertEquals(5, pq.size()); // Size unchanged
+    }
+
+    @Test
+    @DisplayName("Test poll on empty queue")
+    public void testPollEmpty() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertNull(pq.poll());
+    }
+
+    @Test
+    @DisplayName("Test poll on non-empty queue")
+    public void testPoll() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertEquals(1, pq.poll());
+        assertEquals(4, pq.size());
+        assertEquals(2, pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test poll until empty")
+    public void testPollUntilEmpty() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        List<Integer> sorted = new ArrayList<>();
+        while (!pq.isEmpty()) {
+            sorted.add(pq.poll());
+        }
+        assertEquals(Arrays.asList(1, 2, 5, 8, 9), sorted);
+    }
+
+    @Test
+    @DisplayName("Test poll with comparator")
+    public void testPollWithComparator() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Comparator.reverseOrder());
+        pq.addAll(Arrays.asList(5, 2, 8, 1, 9));
+        assertEquals(9, pq.poll());
+        assertEquals(8, pq.poll());
+    }
+
+    // ==================== Remove Tests ====================
+
+    @Test
+    @DisplayName("Test remove existing element")
+    public void testRemoveExisting() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertTrue(pq.remove(5));
+        assertEquals(4, pq.size());
+        assertFalse(pq.contains(5));
+    }
+
+    @Test
+    @DisplayName("Test remove non-existing element")
+    public void testRemoveNonExisting() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertFalse(pq.remove(100));
+        assertEquals(5, pq.size());
+    }
+
+    @Test
+    @DisplayName("Test remove null")
+    public void testRemoveNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertFalse(pq.remove(null));
+    }
+
+    @Test
+    @DisplayName("Test remove head element")
+    public void testRemoveHead() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertTrue(pq.remove(1));
+        assertEquals(2, pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test remove last element")
+    public void testRemoveLast() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3));
+        assertTrue(pq.remove(3));
+        assertEquals(2, pq.size());
+    }
+
+    // ==================== Contains Tests ====================
+
+    @Test
+    @DisplayName("Test contains existing element")
+    public void testContainsExisting() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertTrue(pq.contains(5));
+        assertTrue(pq.contains(1));
+        assertTrue(pq.contains(9));
+    }
+
+    @Test
+    @DisplayName("Test contains non-existing element")
+    public void testContainsNonExisting() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertFalse(pq.contains(100));
+    }
+
+    @Test
+    @DisplayName("Test contains null")
+    public void testContainsNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertFalse(pq.contains(null));
+    }
+
+    // ==================== Size/Clear Tests ====================
+
+    @Test
+    @DisplayName("Test size")
+    public void testSize() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertEquals(0, pq.size());
+        pq.add(1);
+        assertEquals(1, pq.size());
+        pq.addAll(Arrays.asList(2, 3, 4));
+        assertEquals(4, pq.size());
+    }
+
+    @Test
+    @DisplayName("Test clear")
+    public void testClear() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        assertEquals(5, pq.size());
+        pq.clear();
+        assertEquals(0, pq.size());
+        assertNull(pq.peek());
+    }
+
+    // ==================== ToArray Tests ====================
+
+    @Test
+    @DisplayName("Test toArray")
+    public void testToArray() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Object[] array = pq.toArray();
+        assertEquals(5, array.length);
+        assertTrue(Arrays.asList(array).contains(1));
+        assertTrue(Arrays.asList(array).contains(9));
+    }
+
+    @Test
+    @DisplayName("Test toArray with type")
+    public void testToArrayWithType() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Integer[] array = pq.toArray(new Integer[0]);
+        assertEquals(5, array.length);
+    }
+
+    @Test
+    @DisplayName("Test toArray with larger array")
+    public void testToArrayWithLargerArray() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8));
+        Integer[] array = new Integer[10];
+        Integer[] result = pq.toArray(array);
+        assertSame(array, result);
+        assertNull(result[3]); // Element after last should be null
+    }
+
+    @Test
+    @DisplayName("Test toArray with null parameter")
+    public void testToArrayWithNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8));
+        assertThrows(NullPointerException.class, () -> pq.toArray((Integer[]) null));
+    }
+
+    // ==================== Iterator Tests ====================
+
+    @Test
+    @DisplayName("Test iterator hasNext and next")
+    public void testIterator() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Iterator<Integer> it = pq.iterator();
+        int count = 0;
+        while (it.hasNext()) {
+            assertNotNull(it.next());
+            count++;
+        }
+        assertEquals(5, count);
+    }
+
+    @Test
+    @DisplayName("Test iterator remove")
+    public void testIteratorRemove() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Iterator<Integer> it = pq.iterator();
+        it.next();
+        it.remove();
+        assertEquals(4, pq.size());
+    }
+
+    @Test
+    @DisplayName("Test iterator remove without next")
+    public void testIteratorRemoveWithoutNext() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8));
+        Iterator<Integer> it = pq.iterator();
+        assertThrows(IllegalStateException.class, it::remove);
+    }
+
+    @Test
+    @DisplayName("Test iterator concurrent modification")
+    public void testIteratorConcurrentModification() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Iterator<Integer> it = pq.iterator();
+        it.next();
+        pq.add(100); // Modify during iteration
+        assertThrows(ConcurrentModificationException.class, it::next);
+    }
+
+    @Test
+    @DisplayName("Test iterator NoSuchElementException")
+    public void testIteratorNoSuchElement() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1));
+        Iterator<Integer> it = pq.iterator();
+        it.next();
+        assertThrows(NoSuchElementException.class, it::next);
+    }
+
+    @Test
+    @DisplayName("Test iterator multiple removes")
+    public void testIteratorMultipleRemoves() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Iterator<Integer> it = pq.iterator();
+        while (it.hasNext()) {
+            it.next();
+            it.remove();
+        }
+        assertEquals(0, pq.size());
+    }
+
+    // ==================== Spliterator Tests ====================
+
+    @Test
+    @DisplayName("Test spliterator")
+    public void testSpliterator() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        assertNotNull(spliterator);
+        assertEquals(5, spliterator.estimateSize());
+    }
+
+    @Test
+    @DisplayName("Test spliterator characteristics")
+    public void testSpliteratorCharacteristics() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        assertTrue(spliterator.hasCharacteristics(Spliterator.SIZED));
+        assertTrue(spliterator.hasCharacteristics(Spliterator.SUBSIZED));
+        assertTrue(spliterator.hasCharacteristics(Spliterator.NONNULL));
+    }
+
+    @Test
+    @DisplayName("Test spliterator tryAdvance")
+    public void testSpliteratorTryAdvance() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        List<Integer> elements = new ArrayList<>();
+        while (spliterator.tryAdvance(elements::add)) {
+            // Continue
+        }
+        assertEquals(3, elements.size());
+    }
+
+    @Test
+    @DisplayName("Test spliterator trySplit")
+    public void testSpliteratorTrySplit() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        Spliterator<Integer> split = spliterator.trySplit();
+        assertNotNull(split);
+    }
+
+    @Test
+    @DisplayName("Test spliterator forEachRemaining")
+    public void testSpliteratorForEachRemaining() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        List<Integer> elements = new ArrayList<>();
+        spliterator.forEachRemaining(elements::add);
+        assertEquals(5, elements.size());
+    }
+
+    @Test
+    @DisplayName("Test spliterator concurrent modification")
+    public void testSpliteratorConcurrentModification() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        pq.add(100);
+        assertThrows(ConcurrentModificationException.class, () -> 
+            spliterator.forEachRemaining(e -> {}));
+    }
+
+    // ==================== RemoveIf Tests ====================
+
+    @Test
+    @DisplayName("Test removeIf")
+    public void testRemoveIf() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3, 4, 5, 6));
+        boolean removed = pq.removeIf(n -> n % 2 == 0);
+        assertTrue(removed);
+        assertEquals(3, pq.size());
+        assertFalse(pq.contains(2));
+        assertFalse(pq.contains(4));
+        assertFalse(pq.contains(6));
+    }
+
+    @Test
+    @DisplayName("Test removeIf no match")
+    public void testRemoveIfNoMatch() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 3, 5));
+        boolean removed = pq.removeIf(n -> n % 2 == 0);
+        assertFalse(removed);
+        assertEquals(3, pq.size());
+    }
+
+    @Test
+    @DisplayName("Test removeIf null predicate")
+    public void testRemoveIfNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3));
+        assertThrows(NullPointerException.class, () -> pq.removeIf(null));
+    }
+
+    @Test
+    @DisplayName("Test removeIf all elements")
+    public void testRemoveIfAll() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3, 4, 5));
+        boolean removed = pq.removeIf(n -> true);
+        assertTrue(removed);
+        assertEquals(0, pq.size());
+    }
+
+    // ==================== RemoveAll Tests ====================
+
+    @Test
+    @DisplayName("Test removeAll")
+    public void testRemoveAll() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3, 4, 5));
+        Collection<Integer> toRemove = Arrays.asList(2, 4);
+        boolean removed = pq.removeAll(toRemove);
+        assertTrue(removed);
+        assertEquals(3, pq.size());
+        assertFalse(pq.contains(2));
+        assertFalse(pq.contains(4));
+    }
+
+    @Test
+    @DisplayName("Test removeAll no match")
+    public void testRemoveAllNoMatch() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3));
+        Collection<Integer> toRemove = Arrays.asList(4, 5, 6);
+        boolean removed = pq.removeAll(toRemove);
+        assertFalse(removed);
+        assertEquals(3, pq.size());
+    }
+
+    @Test
+    @DisplayName("Test removeAll null collection")
+    public void testRemoveAllNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3));
+        assertThrows(NullPointerException.class, () -> pq.removeAll(null));
+    }
+
+    // ==================== RetainAll Tests ====================
+
+    @Test
+    @DisplayName("Test retainAll")
+    public void testRetainAll() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3, 4, 5));
+        Collection<Integer> toRetain = Arrays.asList(2, 4, 6);
+        boolean changed = pq.retainAll(toRetain);
+        assertTrue(changed);
+        assertEquals(2, pq.size());
+        assertTrue(pq.contains(2));
+        assertTrue(pq.contains(4));
+    }
+
+    @Test
+    @DisplayName("Test retainAll no change")
+    public void testRetainAllNoChange() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3));
+        Collection<Integer> toRetain = Arrays.asList(1, 2, 3, 4, 5);
+        boolean changed = pq.retainAll(toRetain);
+        assertFalse(changed);
+        assertEquals(3, pq.size());
+    }
+
+    @Test
+    @DisplayName("Test retainAll null collection")
+    public void testRetainAllNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3));
+        assertThrows(NullPointerException.class, () -> pq.retainAll(null));
+    }
+
+    // ==================== ForEach Tests ====================
+
+    @Test
+    @DisplayName("Test forEach")
+    public void testForEach() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(5, 2, 8, 1, 9));
+        List<Integer> elements = new ArrayList<>();
+        pq.forEach(elements::add);
+        assertEquals(5, elements.size());
+    }
+
+    @Test
+    @DisplayName("Test forEach null action")
+    public void testForEachNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3));
+        assertThrows(NullPointerException.class, () -> pq.forEach(null));
+    }
+
+    @Test
+    @DisplayName("Test forEach concurrent modification")
+    public void testForEachConcurrentModification() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Arrays.asList(1, 2, 3, 4, 5));
+        assertThrows(ConcurrentModificationException.class, () -> 
+            pq.forEach(e -> pq.add(100)));
+    }
+
+    // ==================== Comparator Tests ====================
+
+    @Test
+    @DisplayName("Test comparator returns null for natural ordering")
+    public void testComparatorNatural() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertNull(pq.comparator());
+    }
+
+    @Test
+    @DisplayName("Test comparator returns custom comparator")
+    public void testComparatorCustom() {
+        Comparator<Integer> cmp = Comparator.reverseOrder();
+        PriorityQueue<Integer> pq = new PriorityQueue<>(cmp);
+        assertEquals(cmp, pq.comparator());
+    }
+
+    // ==================== Edge Cases and Integration Tests ====================
+
+    @Test
+    @DisplayName("Test with custom objects")
+    public void testWithCustomObjects() {
+        class Person implements Comparable<Person> {
+            String name;
+            int age;
+            
+            Person(String name, int age) {
+                this.name = name;
+                this.age = age;
+            }
+            
+            @Override
+            public int compareTo(Person other) {
+                return Integer.compare(this.age, other.age);
+            }
+        }
+        
+        PriorityQueue<Person> pq = new PriorityQueue<>();
+        pq.add(new Person("Alice", 30));
+        pq.add(new Person("Bob", 25));
+        pq.add(new Person("Charlie", 35));
+        
+        assertEquals("Bob", pq.poll().name);
+        assertEquals("Alice", pq.poll().name);
+    }
+
+    @Test
+    @DisplayName("Test heap property maintained after operations")
+    public void testHeapPropertyMaintained() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        Random rand = new Random(42);
+        
+        // Add random elements
+        for (int i = 0; i < 100; i++) {
+            pq.add(rand.nextInt(1000));
+        }
+        
+        // Remove some elements
+        for (int i = 0; i < 30; i++) {
+            pq.poll();
+        }
+        
+        // Add more elements
+        for (int i = 0; i < 50; i++) {
+            pq.add(rand.nextInt(1000));
+        }
+        
+        // Verify order
+        Integer prev = pq.poll();
+        while (!pq.isEmpty()) {
+            Integer curr = pq.poll();
+            assertTrue(prev <= curr, "Heap property violated");
+            prev = curr;
+        }
+    }
+
+    @Test
+    @DisplayName("Test large dataset")
+    public void testLargeDataset() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        int size = 10000;
+        
+        for (int i = size; i > 0; i--) {
+            pq.add(i);
+        }
+        
+        assertEquals(size, pq.size());
+        assertEquals(1, pq.peek());
+        
+        for (int i = 1; i <= size; i++) {
+            assertEquals(i, pq.poll());
+        }
+    }
+
+    @Test
+    @DisplayName("Test alternating add and remove")
+    public void testAlternatingAddRemove() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        
+        for (int i = 0; i < 100; i++) {
+            pq.add(i);
+            if (i % 2 == 0 && !pq.isEmpty()) {
+                pq.poll();
+            }
+        }
+        
+        assertTrue(pq.size() > 0);
+    }
+
+    @Test
+    @DisplayName("Test ClassCastException for non-comparable")
+    public void testNonComparableElements() {
+        class NonComparable {
+            int value;
+            NonComparable(int value) { this.value = value; }
+        }
+        
+        PriorityQueue<NonComparable> pq = new PriorityQueue<>();
+        pq.add(new NonComparable(1));
+        assertThrows(ClassCastException.class, () -> pq.add(new NonComparable(2)));
+    }
+
+    @Test
+    @DisplayName("Test with duplicate elements")
+    public void testDuplicateElements() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(5);
+        pq.add(5);
+        pq.add(5);
+        pq.add(3);
+        pq.add(7);
+        
+        assertEquals(5, pq.size());
+        assertEquals(3, pq.poll());
+        assertEquals(5, pq.poll());
+        assertEquals(5, pq.poll());
+    }
+
+    @Test
+    @DisplayName("Test isEmpty")
+    public void testIsEmpty() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertTrue(pq.isEmpty());
+        pq.add(1);
+        assertFalse(pq.isEmpty());
+        pq.poll();
+        assertTrue(pq.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Test addAll")
+    public void testAddAll() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        Collection<Integer> collection = Arrays.asList(5, 2, 8, 1, 9);
+        pq.addAll(collection);
+        assertEquals(5, pq.size());
+        assertEquals(1, pq.peek());
+    }
+
+    @Test
+    @DisplayName("Test element method")
+    public void testElement() {
+        PriorityQueue
