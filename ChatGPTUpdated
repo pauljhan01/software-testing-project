@@ -1,0 +1,441 @@
+import org.junit.Test;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+import static org.junit.Assert.*;
+
+/**
+ * Test suite for the OpenJDK PriorityQueue implementation.
+ *
+ * Designed for JUnit 4.11 (no JUnit Jupiter).
+ */
+public class ChatGPTUpdated {
+
+    /**
+     * Simple wrapper so we can control Comparable behavior and equality.
+     */
+    private static class IntWrapper implements Comparable<IntWrapper>, Serializable {
+        final int value;
+
+        IntWrapper(int value) {
+            this.value = value;
+        }
+
+        @Override
+        public int compareTo(IntWrapper o) {
+            return Integer.compare(this.value, o.value);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (!(obj instanceof IntWrapper)) return false;
+            IntWrapper other = (IntWrapper) obj;
+            return this.value == other.value;
+        }
+
+        @Override
+        public int hashCode() {
+            return value;
+        }
+
+        @Override
+        public String toString() {
+            return "IntWrapper(" + value + ")";
+        }
+    }
+
+    private static final Comparator<IntWrapper> REVERSE =
+            new Comparator<IntWrapper>() {
+                @Override
+                public int compare(IntWrapper a, IntWrapper b) {
+                    return Integer.compare(b.value, a.value);
+                }
+            };
+
+    // ---------- Constructors & basic operations ----------
+
+    @Test
+    public void testDefaultConstructorBasicOps() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        assertEquals(0, pq.size());
+        assertNull(pq.peek());
+        assertNull(pq.poll());
+
+        assertTrue(pq.add(new IntWrapper(3)));
+        assertTrue(pq.offer(new IntWrapper(1)));
+        assertTrue(pq.offer(new IntWrapper(2)));
+
+        assertEquals(3, pq.size());
+        assertEquals(1, pq.peek().value);
+        assertEquals(1, pq.poll().value);
+        assertEquals(2, pq.poll().value);
+        assertEquals(1, pq.size());
+
+        pq.clear();
+        assertEquals(0, pq.size());
+        assertNull(pq.peek());
+    }
+
+    @Test
+    public void testInitialCapacityConstructorGrowth() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>(1);
+        for (int i = 0; i < 100; i++) {
+            assertTrue(pq.offer(new IntWrapper(i)));
+        }
+        assertEquals(100, pq.size());
+    }
+
+    @Test
+    public void testComparatorConstructors() {
+        PriorityQueue<IntWrapper> pq1 = new PriorityQueue<IntWrapper>(REVERSE);
+        pq1.add(new IntWrapper(1));
+        pq1.add(new IntWrapper(3));
+        pq1.add(new IntWrapper(2));
+
+        assertEquals(3, pq1.peek().value);
+        assertSame(REVERSE, pq1.comparator());
+
+        PriorityQueue<IntWrapper> pq2 = new PriorityQueue<IntWrapper>(5, REVERSE);
+        pq2.add(new IntWrapper(10));
+        pq2.add(new IntWrapper(5));
+        assertEquals(10, pq2.peek().value);
+        assertSame(REVERSE, pq2.comparator());
+    }
+
+    @Test
+    public void testCollectionConstructorFromList() {
+        List<IntWrapper> list = Arrays.asList(
+                new IntWrapper(5),
+                new IntWrapper(1),
+                new IntWrapper(3)
+        );
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>(list);
+        assertEquals(3, pq.size());
+        assertEquals(1, pq.peek().value);
+    }
+
+    @Test
+    public void testPriorityQueueCopyConstructor() {
+        PriorityQueue<IntWrapper> original = new PriorityQueue<IntWrapper>(REVERSE);
+        original.add(new IntWrapper(1));
+        original.add(new IntWrapper(4));
+        original.add(new IntWrapper(2));
+
+        PriorityQueue<IntWrapper> copy = new PriorityQueue<IntWrapper>(original);
+        assertEquals(original.size(), copy.size());
+        assertEquals(original.peek().value, copy.peek().value);
+        assertEquals(original.comparator(), copy.comparator());
+    }
+
+    @Test
+    public void testSortedSetConstructor() {
+        SortedSet<IntWrapper> set = new TreeSet<IntWrapper>(REVERSE);
+        set.add(new IntWrapper(1));
+        set.add(new IntWrapper(2));
+        set.add(new IntWrapper(3));
+
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>(set);
+        assertEquals(3, pq.size());
+        // Should use set's REVERSE comparator
+        assertEquals(3, pq.peek().value);
+        assertEquals(REVERSE, pq.comparator());
+    }
+
+    // ---------- Error paths: nulls and incompatible types ----------
+
+    @Test(expected = NullPointerException.class)
+    public void testAddNullThrows() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(null);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testOfferNullThrows() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.offer(null);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    @Test(expected = ClassCastException.class)
+    public void testIncompatibleTypesCauseClassCastException() {
+        PriorityQueue pq = new PriorityQueue();
+        pq.add("string");
+        // mixing String and Integer: both Comparable but not mutually comparable
+        pq.add(1);
+    }
+
+    // ---------- remove / contains / indexOf / removeAt ----------
+
+    @Test
+    public void testRemoveContainsAndIndexOf() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        IntWrapper one = new IntWrapper(1);
+        IntWrapper two = new IntWrapper(2);
+        IntWrapper three = new IntWrapper(3);
+
+        pq.add(one);
+        pq.add(two);
+        pq.add(three);
+
+        assertTrue(pq.contains(two));
+        assertTrue(pq.remove(two));
+        assertFalse(pq.contains(two));
+
+        // removing element not present should return false
+        assertFalse(pq.remove(new IntWrapper(99)));
+
+        // poll remaining to exercise siftDown and removeAt
+        IntWrapper head = pq.poll();
+        assertNotNull(head);
+        assertEquals(2, head.value == 1 || head.value == 3 ? pq.size() + 1 : pq.size()); // sanity
+    }
+
+    // ---------- toArray() and toArray(T[]) ----------
+
+    @Test
+    public void testToArrayVariants() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(new IntWrapper(1));
+        pq.add(new IntWrapper(2));
+        pq.add(new IntWrapper(3));
+
+        Object[] objs = pq.toArray();
+        assertEquals(3, objs.length);
+
+        IntWrapper[] exact = pq.toArray(new IntWrapper[3]);
+        assertEquals(3, exact.length);
+        assertNotNull(exact[0]);
+
+        IntWrapper[] smaller = pq.toArray(new IntWrapper[0]);
+        assertEquals(3, smaller.length);
+
+        IntWrapper[] bigger = new IntWrapper[5];
+        IntWrapper[] result = pq.toArray(bigger);
+        assertSame(bigger, result);
+        assertEquals(5, result.length);
+        assertNull(result[3]);
+        assertNull(result[4]);
+    }
+
+    // ---------- Iterator (Itr) ----------
+
+    @Test
+    public void testIteratorHasNextNextAndRemove() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(new IntWrapper(1));
+        pq.add(new IntWrapper(2));
+
+        Iterator<IntWrapper> it = pq.iterator();
+        assertTrue(it.hasNext());
+        IntWrapper first = it.next();
+        assertNotNull(first);
+
+        it.remove(); // removes the element from the queue
+        assertEquals(1, pq.size());
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testIteratorRemoveWithoutNextIllegalState() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(new IntWrapper(1));
+        Iterator<IntWrapper> it = pq.iterator();
+        it.remove(); // calling remove before next() should fail
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testIteratorRemoveTwiceIllegalState() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(new IntWrapper(1));
+        Iterator<IntWrapper> it = pq.iterator();
+        it.next();
+        it.remove();
+        // second remove without next() again
+        it.remove();
+    }
+
+    @Test(expected = ConcurrentModificationException.class)
+    public void testIteratorFailFastOnStructuralChange() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(new IntWrapper(1));
+        pq.add(new IntWrapper(2));
+
+        Iterator<IntWrapper> it = pq.iterator();
+        // structural modification while iterating
+        pq.add(new IntWrapper(3));
+        it.next(); // should detect concurrent modification
+    }
+
+    // ---------- Spliterator (PriorityQueueSpliterator) ----------
+
+    @Test
+    public void testSpliteratorTraverseAndTrySplit() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        for (int i = 0; i < 10; i++) {
+            pq.add(new IntWrapper(i));
+        }
+
+        Spliterator<IntWrapper> spliterator = pq.spliterator();
+        assertTrue(spliterator.estimateSize() <= 10);
+        int characteristics = spliterator.characteristics();
+        assertTrue((characteristics & Spliterator.SIZED) != 0);
+        assertTrue((characteristics & Spliterator.SUBSIZED) != 0);
+        assertTrue((characteristics & Spliterator.ORDERED) != 0);
+
+        List<IntWrapper> seen = new ArrayList<IntWrapper>();
+        Spliterator<IntWrapper> split = spliterator.trySplit();
+        if (split != null) {
+            split.forEachRemaining(new Consumer<IntWrapper>() {
+                @Override
+                public void accept(IntWrapper value) {
+                    seen.add(value);
+                }
+            });
+        }
+        spliterator.forEachRemaining(new Consumer<IntWrapper>() {
+            @Override
+            public void accept(IntWrapper value) {
+                seen.add(value);
+            }
+        });
+
+        assertEquals(10, seen.size());
+    }
+
+    @Test(expected = ConcurrentModificationException.class)
+    public void testSpliteratorFailFast() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(new IntWrapper(1));
+        pq.add(new IntWrapper(2));
+
+        Spliterator<IntWrapper> sp = pq.spliterator();
+        pq.add(new IntWrapper(3)); // structural modification
+        sp.tryAdvance(new Consumer<IntWrapper>() {
+            @Override
+            public void accept(IntWrapper intWrapper) {
+                // no-op
+            }
+        });
+    }
+
+    // ---------- Serialization (writeObject / readObject) ----------
+
+    @Test
+    public void testSerializationRoundTrip() throws Exception {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>(REVERSE);
+        pq.add(new IntWrapper(1));
+        pq.add(new IntWrapper(2));
+        pq.add(new IntWrapper(3));
+
+        byte[] bytes;
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos);
+        oos.writeObject(pq);
+        oos.flush();
+        bytes = bos.toByteArray();
+        oos.close();
+
+        ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
+        Object obj = ois.readObject();
+        ois.close();
+
+        assertTrue(obj instanceof PriorityQueue);
+        PriorityQueue<?> deserialized = (PriorityQueue<?>) obj;
+
+        assertEquals(pq.size(), deserialized.size());
+        assertEquals(pq.comparator() != null, deserialized.comparator() != null);
+    }
+
+    // ---------- bulkRemove / removeIf / removeAll / retainAll ----------
+
+    @Test
+    public void testRemoveIfAndBulkOperations() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        for (int i = 0; i < 10; i++) {
+            pq.add(new IntWrapper(i));
+        }
+
+        // remove even numbers
+        boolean removedEven = pq.removeIf(new Predicate<IntWrapper>() {
+            @Override
+            public boolean test(IntWrapper w) {
+                return w.value % 2 == 0;
+            }
+        });
+        assertTrue(removedEven);
+
+        // no elements > 100
+        boolean removedNone = pq.removeIf(new Predicate<IntWrapper>() {
+            @Override
+            public boolean test(IntWrapper w) {
+                return w.value > 100;
+            }
+        });
+        assertFalse(removedNone);
+
+        // Now test removeAll using equality (IntWrapper.equals)
+        pq.clear();
+        pq.add(new IntWrapper(1));
+        pq.add(new IntWrapper(2));
+        pq.add(new IntWrapper(3));
+
+        List<IntWrapper> toRemove = Arrays.asList(new IntWrapper(1), new IntWrapper(3));
+        assertTrue(pq.removeAll(toRemove));
+        assertEquals(1, pq.size());
+        assertTrue(pq.contains(new IntWrapper(2)));
+
+        // retain only value 2 (which is already the only one left)
+        assertFalse(pq.retainAll(Collections.singleton(new IntWrapper(2))));
+        assertEquals(1, pq.size());
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testRemoveIfNullPredicateThrows() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.removeIf(null);
+    }
+
+    // ---------- forEach (Consumer) ----------
+
+    @Test
+    public void testForEachNormalAndConcurrentModification() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.add(new IntWrapper(1));
+        pq.add(new IntWrapper(2));
+
+        final List<IntWrapper> seen = new ArrayList<IntWrapper>();
+        pq.forEach(new Consumer<IntWrapper>() {
+            @Override
+            public void accept(IntWrapper intWrapper) {
+                seen.add(intWrapper);
+            }
+        });
+        assertEquals(2, seen.size());
+
+        try {
+            pq.forEach(new Consumer<IntWrapper>() {
+                @Override
+                public void accept(IntWrapper intWrapper) {
+                    // Structural modification during forEach
+                    pq.add(new IntWrapper(3));
+                }
+            });
+            fail("Expected ConcurrentModificationException");
+        } catch (ConcurrentModificationException expected) {
+            // expected
+        }
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testForEachNullConsumerThrows() {
+        PriorityQueue<IntWrapper> pq = new PriorityQueue<IntWrapper>();
+        pq.forEach(null);
+    }
+}
