@@ -1,0 +1,423 @@
+import org.junit.Test;
+
+import java.io.*;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+import static org.junit.Assert.*;
+
+/**
+ * Test suite for java.util.PriorityQueue (OpenJDK implementation).
+ *
+ * Goal: at least one test that exercises every public and private method
+ * in PriorityQueue.java (including nested iterator/spliterator classes)
+ * via the public API.
+ */
+public class PriorityQueueTest {
+
+    /* ---------- Helpers ---------- */
+
+    private PriorityQueue<Integer> makeNaturalQueue(Integer... values) {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(values));
+        return pq;
+    }
+
+    private PriorityQueue<Integer> makeReverseQueue(Integer... values) {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(Comparator.reverseOrder());
+        pq.addAll(Arrays.asList(values));
+        return pq;
+    }
+
+    private <T> Set<T> toSet(Iterable<T> it) {
+        Set<T> s = new HashSet<>();
+        for (T t : it) {
+            s.add(t);
+        }
+        return s;
+    }
+
+    /* ---------- Constructors ---------- */
+
+    @Test
+    public void testDefaultConstructorOrdersNaturally() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(3);
+        pq.add(1);
+        pq.add(2);
+
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(3), pq.poll());
+        assertNull(pq.poll());
+    }
+
+    @Test
+    public void testConstructorInitialCapacity() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(1);
+        // triggers grow(int) when we exceed capacity
+        pq.add(2);
+        pq.add(1);
+
+        assertEquals(2, pq.size());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testConstructorInitialCapacityTooSmallThrows() {
+        new PriorityQueue<Integer>(0);
+    }
+
+    @Test
+    public void testConstructorWithComparator() {
+        Comparator<Integer> rev = Comparator.reverseOrder();
+        PriorityQueue<Integer> pq = new PriorityQueue<>(rev);
+
+        pq.add(1);
+        pq.add(3);
+        pq.add(2);
+
+        // reverse order: largest element first
+        assertEquals(Integer.valueOf(3), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertSame(rev, pq.comparator());
+    }
+
+    @Test
+    public void testConstructorWithCapacityAndComparator() {
+        Comparator<Integer> rev = Comparator.reverseOrder();
+        PriorityQueue<Integer> pq = new PriorityQueue<>(1, rev);
+
+        pq.add(1);
+        pq.add(2); // triggers grow(...) and siftUpUsingComparator
+
+        assertEquals(Integer.valueOf(2), pq.peek());
+    }
+
+    @Test
+    public void testConstructorFromCollectionUsesHeapify() {
+        List<Integer> list = Arrays.asList(5, 1, 4, 2, 3);
+        PriorityQueue<Integer> pq = new PriorityQueue<>(list); // uses initFromCollection + heapify
+
+        assertEquals(5, pq.size());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(3), pq.poll());
+    }
+
+    @Test
+    public void testConstructorFromPriorityQueueUsesInitFromPriorityQueue() {
+        PriorityQueue<Integer> base = makeNaturalQueue(4, 1, 3, 2);
+        PriorityQueue<Integer> copy = new PriorityQueue<>(base); // initFromPriorityQueue, ensureNonEmpty
+
+        assertEquals(base.size(), copy.size());
+        assertEquals(Integer.valueOf(1), copy.poll());
+        assertEquals(Integer.valueOf(2), copy.poll());
+        assertEquals(Integer.valueOf(3), copy.poll());
+        assertEquals(Integer.valueOf(4), copy.poll());
+    }
+
+    @Test
+    public void testConstructorFromEmptyPriorityQueueStillWorks() {
+        PriorityQueue<Integer> empty = new PriorityQueue<>();
+        PriorityQueue<Integer> copy = new PriorityQueue<>(empty); // ensureNonEmpty called with length 0
+
+        assertTrue(copy.isEmpty());
+        assertNull(copy.peek());
+        assertEquals(0, copy.size());
+    }
+
+    @Test
+    public void testConstructorFromSortedSet() {
+        SortedSet<Integer> set = new TreeSet<>(Arrays.asList(5, 1, 3));
+        PriorityQueue<Integer> pq = new PriorityQueue<>(set); // initElementsFromCollection
+
+        assertEquals(set.size(), pq.size());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(3), pq.poll());
+        assertEquals(Integer.valueOf(5), pq.poll());
+    }
+
+    /* ---------- Basic queue operations ---------- */
+
+    @Test
+    public void testAddOfferPeekPoll() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertTrue(pq.add(2));
+        assertTrue(pq.offer(1));
+        assertEquals(2, pq.size());
+        assertEquals(Integer.valueOf(1), pq.peek());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertNull(pq.poll()); // empty
+    }
+
+    @Test
+    public void testPeekAndPollOnEmptyReturnNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertNull(pq.peek());
+        assertNull(pq.poll());
+    }
+
+    @Test
+    public void testRemoveExistingElementUsesIndexOfAndRemoveAt() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(3, 1, 2);
+
+        assertTrue(pq.remove(Integer.valueOf(2)));
+        assertFalse(pq.contains(2));
+        assertEquals(2, pq.size());
+    }
+
+    @Test
+    public void testRemoveNonExistingElementReturnsFalse() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3);
+
+        assertFalse(pq.remove(Integer.valueOf(4)));
+        assertEquals(3, pq.size());
+    }
+
+    @Test
+    public void testContainsTrueAndFalse() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3);
+
+        assertTrue(pq.contains(1));
+        assertFalse(pq.contains(99));
+    }
+
+    @Test
+    public void testSizeAndClear() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3);
+        assertEquals(3, pq.size());
+
+        pq.clear(); // uses clear() path
+        assertEquals(0, pq.size());
+        assertNull(pq.peek());
+    }
+
+    @Test
+    public void testComparatorMethodForNaturalOrderReturnsNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertNull(pq.comparator());
+    }
+
+    /* ---------- toArray / iterator ---------- */
+
+    @Test
+    public void testToArrayObject() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(3, 1, 2);
+        Object[] arr = pq.toArray();
+
+        assertEquals(3, arr.length);
+        // Order not specified; check contents as a set
+        Set<Object> set = new HashSet<>(Arrays.asList(arr));
+        assertEquals(new HashSet<>(Arrays.asList(1, 2, 3)), set);
+    }
+
+    @Test
+    public void testToArrayTypedWithLargerArray() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(3, 1, 2);
+        Integer[] array = new Integer[5];
+        Arrays.fill(array, -1);
+
+        Integer[] result = pq.toArray(array);
+        assertSame(array, result);
+        assertEquals(3, result[0].intValue());
+        // Only first size elements are filled, but we don't assert exact heap order;
+        // just check all are present and non-null in first size slots.
+        Set<Integer> firstThree = new HashSet<>(Arrays.asList(result[0], result[1], result[2]));
+        assertEquals(new HashSet<>(Arrays.asList(1, 2, 3)), firstThree);
+        assertNull(result[3]); // should be set to null after last element
+    }
+
+    @Test
+    public void testToArrayTypedWithSmallerArrayAllocatesNew() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(3, 1, 2);
+        Integer[] small = new Integer[1];
+
+        Integer[] result = pq.toArray(small);
+
+        assertNotSame(small, result);
+        assertEquals(3, result.length);
+        Set<Integer> contents = new HashSet<>(Arrays.asList(result));
+        assertEquals(new HashSet<>(Arrays.asList(1, 2, 3)), contents);
+    }
+
+    @Test
+    public void testIteratorHasNextNextTraversesAllElements() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(3, 1, 2);
+        Iterator<Integer> it = pq.iterator();
+
+        Set<Integer> seen = new HashSet<>();
+        while (it.hasNext()) {
+            seen.add(it.next());
+        }
+
+        assertEquals(new HashSet<>(Arrays.asList(1, 2, 3)), seen);
+    }
+
+    @Test
+    public void testIteratorRemoveRemovesLastReturned() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(3, 1, 2);
+        Iterator<Integer> it = pq.iterator();
+
+        assertTrue(it.hasNext());
+        Integer first = it.next();
+        it.remove(); // uses Itr.remove -> removeAt / removeEq
+
+        assertEquals(2, pq.size());
+        assertFalse(pq.contains(first));
+    }
+
+    @Test(expected = ConcurrentModificationException.class)
+    public void testIteratorConcurrentModificationThrows() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3);
+        Iterator<Integer> it = pq.iterator();
+
+        pq.add(4); // mod after iterator creation
+        it.next(); // should throw ConcurrentModificationException
+    }
+
+    /* ---------- Spliterator ---------- */
+
+    @Test
+    public void testSpliteratorTraverseAllElementsWithTryAdvance() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3, 4);
+        Spliterator<Integer> spliterator = pq.spliterator();
+
+        List<Integer> result = new ArrayList<>();
+        while (spliterator.tryAdvance(result::add)) {
+            // tryAdvance internally uses getFence, index, estimateSize
+        }
+
+        assertEquals(4, result.size());
+        assertEquals(new HashSet<>(Arrays.asList(1, 2, 3, 4)),
+                     new HashSet<>(result));
+    }
+
+    @Test
+    public void testSpliteratorTrySplitAndForEachRemaining() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3, 4, 5, 6);
+        Spliterator<Integer> s1 = pq.spliterator();
+        Spliterator<Integer> s2 = s1.trySplit(); // may be null for small queues
+
+        Set<Integer> seen = new HashSet<>();
+
+        if (s2 != null) {
+            s2.forEachRemaining(seen::add);
+        }
+        s1.forEachRemaining(seen::add);
+
+        assertEquals(new HashSet<>(Arrays.asList(1, 2, 3, 4, 5, 6)), seen);
+        // exercise characteristics() and estimateSize()
+        assertTrue(s1.characteristics() != 0);
+        assertTrue(s1.estimateSize() >= 0);
+    }
+
+    /* ---------- Bulk operations: removeIf / removeAll / retainAll / forEach ---------- */
+
+    @Test
+    public void testRemoveIfUsesPredicateAndBulkRemoveBitset() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3, 4, 5, 6);
+        // Remove evens; keep odds. This forces both true and false branches in bulkRemove.
+        boolean changed = pq.removeIf(x -> x % 2 == 0);
+
+        assertTrue(changed);
+        assertEquals(new HashSet<>(Arrays.asList(1, 3, 5)), toSet(pq));
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testRemoveIfNullPredicateThrowsNPE() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3);
+        pq.removeIf(null); // Objects.requireNonNull(filter)
+    }
+
+    @Test
+    public void testRemoveAllRemovesIntersection() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3, 4, 5);
+        List<Integer> toRemove = Arrays.asList(2, 4, 6);
+
+        boolean changed = pq.removeAll(toRemove);
+
+        assertTrue(changed);
+        assertEquals(new HashSet<>(Arrays.asList(1, 3, 5)), toSet(pq));
+    }
+
+    @Test
+    public void testRetainAllKeepsOnlyIntersection() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3, 4, 5);
+        List<Integer> toKeep = Arrays.asList(2, 4, 6);
+
+        boolean changed = pq.retainAll(toKeep); // calls retainAll -> bulkRemove
+
+        assertTrue(changed);
+        assertEquals(new HashSet<>(Arrays.asList(2, 4)), toSet(pq));
+    }
+
+    @Test
+    public void testForEachConsumerVisitsAllElements() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3, 4);
+        Set<Integer> seen = new HashSet<>();
+
+        pq.forEach(seen::add); // public forEach(Consumer<? super E> action)
+
+        assertEquals(new HashSet<>(Arrays.asList(1, 2, 3, 4)), seen);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testForEachNullConsumerThrowsNPE() {
+        PriorityQueue<Integer> pq = makeNaturalQueue(1, 2, 3);
+        pq.forEach((Consumer<Integer>) null);
+    }
+
+    /* ---------- Serialization: writeObject / readObject / heapify path ---------- */
+
+    @Test
+    public void testSerializationRoundTripPreservesElementsAndComparator() throws Exception {
+        Comparator<Integer> rev = Comparator.reverseOrder();
+        PriorityQueue<Integer> original = new PriorityQueue<>(rev);
+        original.addAll(Arrays.asList(1, 2, 3, 4));
+
+        // Serialize (triggers private writeObject)
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+            oos.writeObject(original);
+        }
+
+        // Deserialize (triggers private readObject -> initFromCollection / heapify)
+        PriorityQueue<Integer> copy;
+        try (ObjectInputStream ois = new ObjectInputStream(
+                new ByteArrayInputStream(baos.toByteArray()))) {
+            Object obj = ois.readObject();
+            assertTrue(obj instanceof PriorityQueue);
+            copy = (PriorityQueue<Integer>) obj;
+        }
+
+        assertEquals(original.size(), copy.size());
+        assertEquals(original.comparator().getClass(), copy.comparator().getClass());
+
+        // Compare elements as sets (order may differ)
+        Set<Integer> originalSet = new HashSet<>(original);
+        Set<Integer> copySet = new HashSet<>(copy);
+        assertEquals(originalSet, copySet);
+    }
+
+    /* ---------- Extra: type safety / non-comparable protection ---------- */
+
+    private static final class NonComparable {
+        final int x;
+        NonComparable(int x) { this.x = x; }
+    }
+
+    @Test(expected = ClassCastException.class)
+    public void testMixingNonComparableWithComparableThrows() {
+        PriorityQueue<Object> pq = new PriorityQueue<>();
+        pq.add(1); // Integer
+        pq.add(2);
+        // When inserting a non-comparable element into a queue using natural ordering,
+        // the OpenJDK implementation will eventually hit a ClassCastException
+        pq.add(new NonComparable(3));
+    }
+}
