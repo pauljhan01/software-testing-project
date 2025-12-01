@@ -1,0 +1,548 @@
+import org.junit.Test;
+import static org.junit.Assert.*;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.IOException;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.ConcurrentModificationException;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.SortedSet;
+import java.util.Spliterator;
+import java.util.TreeSet;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+public class GPTCHP {
+
+    /**
+     * Simple non-comparable type to trigger ClassCastException
+     * when used with a natural-ordering PriorityQueue.
+     */
+    private static class NonComparable {
+        final int value;
+        NonComparable(int v) { this.value = v; }
+    }
+
+    /* ------------------------------------------------------------------
+     * Constructors
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testDefaultConstructorAndNaturalOrdering() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(3);
+        pq.add(1);
+        pq.add(2);
+
+        assertEquals(3, pq.size());
+        // natural ordering: smallest first
+        assertEquals(Integer.valueOf(1), pq.peek());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(3), pq.poll());
+        assertNull(pq.poll()); // now empty
+    }
+
+    @Test
+    public void testConstructorWithInitialCapacity() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>(2);
+        // exceed initial capacity to exercise grow()
+        for (int i = 0; i < 20; i++) {
+            pq.offer(i);
+        }
+        assertEquals(20, pq.size());
+        // still respects natural ordering
+        assertEquals(Integer.valueOf(0), pq.peek());
+    }
+
+    @Test
+    public void testConstructorWithComparatorOnly() {
+        Comparator<Integer> reverse = Comparator.reverseOrder();
+        PriorityQueue<Integer> pq = new PriorityQueue<>(reverse);
+
+        pq.add(1);
+        pq.add(3);
+        pq.add(2);
+
+        // highest first due to reverse comparator
+        assertEquals(reverse, pq.comparator());
+        assertEquals(Integer.valueOf(3), pq.peek());
+        assertEquals(Integer.valueOf(3), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(1), pq.poll());
+    }
+
+    @Test
+    public void testConstructorWithInitialCapacityAndComparator() {
+        Comparator<Integer> reverse = Comparator.reverseOrder();
+        PriorityQueue<Integer> pq = new PriorityQueue<>(4, reverse);
+
+        pq.offer(10);
+        pq.offer(5);
+        pq.offer(7);
+
+        assertEquals(reverse, pq.comparator());
+        assertEquals(Integer.valueOf(10), pq.peek());
+    }
+
+    @Test
+    public void testConstructorFromCollection() {
+        Collection<Integer> c = Arrays.asList(5, 1, 3, 2, 4);
+        PriorityQueue<Integer> pq = new PriorityQueue<>(c); // uses initFromCollection, heapify, ensureNonEmpty
+
+        assertEquals(c.size(), pq.size());
+        // Poll all elements, they must come out in sorted order
+        List<Integer> out = new ArrayList<>();
+        Integer x;
+        while ((x = pq.poll()) != null) {
+            out.add(x);
+        }
+        assertEquals(Arrays.asList(1, 2, 3, 4, 5), out);
+    }
+
+    @Test
+    public void testConstructorFromPriorityQueue() {
+        Comparator<Integer> reverse = Comparator.reverseOrder();
+        PriorityQueue<Integer> original = new PriorityQueue<>(reverse);
+        original.addAll(Arrays.asList(1, 2, 3, 4, 5));
+
+        PriorityQueue<Integer> copy = new PriorityQueue<>(original); // initFromPriorityQueue + ensureNonEmpty
+
+        assertEquals(original.size(), copy.size());
+        assertEquals(reverse, copy.comparator());
+
+        List<Integer> polled = new ArrayList<>();
+        Integer v;
+        while ((v = copy.poll()) != null) {
+            polled.add(v);
+        }
+        // reverse order
+        assertEquals(Arrays.asList(5, 4, 3, 2, 1), polled);
+    }
+
+    @Test
+    public void testConstructorFromSortedSet() {
+        SortedSet<Integer> set = new TreeSet<>(Arrays.asList(7, 1, 4));
+        PriorityQueue<Integer> pq = new PriorityQueue<>(set);
+
+        assertEquals(3, pq.size());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(4), pq.poll());
+        assertEquals(Integer.valueOf(7), pq.poll());
+        assertNull(pq.poll());
+    }
+
+    /* ------------------------------------------------------------------
+     * add / offer / null and non-comparable behavior
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testAddAndOfferAndPeekPoll() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        assertTrue(pq.offer(2));
+        assertTrue(pq.add(1));
+        assertTrue(pq.offer(3));
+
+        // uses siftUpComparable / siftDownComparable internally
+        assertEquals(Integer.valueOf(1), pq.peek());
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(3), pq.poll());
+        assertNull(pq.poll());
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testOfferRejectsNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.offer(null); // should throw NPE
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testAddRejectsNull() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(null); // should throw NPE
+    }
+
+    @Test(expected = ClassCastException.class)
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    public void testClassCastExceptionForNonComparableElements() {
+        // Raw-type queue uses natural ordering; NonComparable is not Comparable
+        PriorityQueue raw = new PriorityQueue();
+        raw.add(new NonComparable(1)); // will attempt cast to Comparable in siftUpComparable
+    }
+
+    /* ------------------------------------------------------------------
+     * size, clear, contains, remove(Object), indexOf
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testSizeAndClearAndContainsAndRemoveObject() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(10);
+        pq.add(20);
+        pq.add(30);
+
+        assertEquals(3, pq.size());
+        assertTrue(pq.contains(20));       // uses contains + internal indexOf
+        assertFalse(pq.contains(99));
+
+        assertTrue(pq.remove(Integer.valueOf(20))); // remove(Object) + indexOf + siftDown
+        assertFalse(pq.contains(20));
+        assertEquals(2, pq.size());
+
+        // remove non-existing element returns false
+        assertFalse(pq.remove(Integer.valueOf(99)));
+
+        pq.clear(); // clear()
+        assertEquals(0, pq.size());
+        assertNull(pq.peek());
+    }
+
+    /* ------------------------------------------------------------------
+     * toArray(), toArray(T[])
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testToArrayObject() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(3, 1, 2));
+
+        Object[] arr = pq.toArray();
+        assertEquals(3, arr.length);
+        // Heap order is not sorted order; just ensure all elements are present
+        List<Integer> list = new ArrayList<>();
+        for (Object o : arr) {
+            list.add((Integer) o);
+        }
+        list.sort(Integer::compareTo);
+        assertEquals(Arrays.asList(1, 2, 3), list);
+    }
+
+    @Test
+    public void testToArrayTypedSmallerArray() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(3, 1, 2));
+
+        Integer[] small = new Integer[0];
+        Integer[] out = pq.toArray(small); // should allocate new array
+
+        assertEquals(3, out.length);
+        List<Integer> list = Arrays.asList(out);
+        list.sort(Integer::compareTo);
+        assertEquals(Arrays.asList(1, 2, 3), list);
+    }
+
+    @Test
+    public void testToArrayTypedLargerArray() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(3, 1, 2));
+
+        Integer[] large = new Integer[10];
+        Arrays.fill(large, -1);
+        Integer[] out = pq.toArray(large); // should reuse 'large' and set element after size to null
+
+        assertSame(large, out);
+        assertEquals(3, pq.size());
+        assertNull(out[3]); // first element after real content must be null
+    }
+
+    /* ------------------------------------------------------------------
+     * iterator: iterator(), hasNext(), next(), Iterator.remove()
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testIteratorHasNextNextAndRemove() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3));
+
+        Iterator<Integer> it = pq.iterator();
+        assertTrue(it.hasNext());
+        Integer first = it.next(); // hasNext(), next()
+        assertNotNull(first);
+
+        it.remove(); // iterator.remove(), should delete last returned element
+        assertEquals(2, pq.size());
+        assertFalse(pq.contains(first));
+    }
+
+    @Test
+    public void testIteratorFailFastOnConcurrentModification() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3));
+
+        Iterator<Integer> it = pq.iterator();
+        pq.add(4); // structural modification after iterator creation
+
+        try {
+            it.next();
+            fail("Expected ConcurrentModificationException");
+        } catch (ConcurrentModificationException expected) {
+            // OK
+        }
+    }
+
+    /* ------------------------------------------------------------------
+     * poll(), comparator()
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testPollOnEmptyAndComparatorMethod() {
+        PriorityQueue<Integer> natural = new PriorityQueue<>();
+        assertNull(natural.poll());
+        assertNull(natural.comparator()); // natural ordering: comparator() returns null
+
+        Comparator<Integer> reverse = Comparator.reverseOrder();
+        PriorityQueue<Integer> withCmp = new PriorityQueue<>(reverse);
+        assertEquals(reverse, withCmp.comparator());
+    }
+
+    /* ------------------------------------------------------------------
+     * Serialization: writeObject / readObject / heapify
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testSerializationRoundTrip() throws Exception {
+        Comparator<Integer> reverse = Comparator.reverseOrder();
+        PriorityQueue<Integer> original = new PriorityQueue<>(reverse);
+        original.addAll(Arrays.asList(1, 2, 3, 4));
+
+        // writeObject
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos);
+        oos.writeObject(original);
+        oos.close();
+
+        byte[] bytes = bos.toByteArray();
+        // readObject
+        ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
+        Object obj = ois.readObject();
+        ois.close();
+
+        assertTrue(obj instanceof PriorityQueue);
+        @SuppressWarnings("unchecked")
+        PriorityQueue<Integer> copy = (PriorityQueue<Integer>) obj;
+
+        // after deserialization, comparator and heap ordering should be preserved
+        assertEquals(reverse, copy.comparator());
+
+        List<Integer> polled = new ArrayList<>();
+        Integer v;
+        while ((v = copy.poll()) != null) {
+            polled.add(v);
+        }
+        // reverse order
+        assertEquals(Arrays.asList(4, 3, 2, 1), polled);
+    }
+
+    /* ------------------------------------------------------------------
+     * Spliterator: spliterator(), getFence(), trySplit(), forEachRemaining(),
+     *              tryAdvance(), estimateSize(), characteristics()
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testSpliteratorBasicTraversalEstimateSizeAndCharacteristics() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5));
+
+        Spliterator<Integer> spl = pq.spliterator();
+        long est = spl.estimateSize();
+        assertEquals(pq.size(), est);
+
+        int ch = spl.characteristics();
+        // According to implementation: SIZED | SUBSIZED | NONNULL
+        assertTrue((ch & Spliterator.SIZED) != 0);
+        assertTrue((ch & Spliterator.SUBSIZED) != 0);
+        assertTrue((ch & Spliterator.NONNULL) != 0);
+
+        List<Integer> collected = new ArrayList<>();
+        spl.forEachRemaining(collected::add); // forEachRemaining
+
+        assertEquals(pq.size(), collected.size());
+        // No specific ordering guaranteed, just check contents
+        collected.sort(Integer::compareTo);
+        assertEquals(Arrays.asList(1, 2, 3, 4, 5), collected);
+    }
+
+    @Test
+    public void testSpliteratorTrySplitAndTryAdvance() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        for (int i = 0; i < 10; i++) {
+            pq.add(i);
+        }
+
+        Spliterator<Integer> spl1 = pq.spliterator();
+        Spliterator<Integer> spl2 = spl1.trySplit(); // non-null when size > 1
+        assertNotNull(spl2);
+
+        List<Integer> list1 = new ArrayList<>();
+        List<Integer> list2 = new ArrayList<>();
+
+        // consume spl1 using tryAdvance
+        while (spl1.tryAdvance(list1::add)) {
+            // loop
+        }
+        // consume spl2 using forEachRemaining
+        spl2.forEachRemaining(list2::add);
+
+        List<Integer> all = new ArrayList<>();
+        all.addAll(list1);
+        all.addAll(list2);
+        all.sort(Integer::compareTo);
+        assertEquals(10, all.size());
+        assertEquals(Arrays.asList(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), all);
+    }
+
+    @Test
+    public void testSpliteratorForEachRemainingFailFastOnConcurrentModification() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3, 4));
+
+        Spliterator<Integer> spl = pq.spliterator();
+
+        try {
+            spl.forEachRemaining(e -> {
+                if (e == 2) {
+                    pq.add(99); // structural modification during traversal
+                }
+            });
+            fail("Expected ConcurrentModificationException");
+        } catch (ConcurrentModificationException expected) {
+            // ok
+        }
+    }
+
+    /* ------------------------------------------------------------------
+     * removeIf, removeAll, retainAll, bulkRemove, nBits, setBit, isClear
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testRemoveIfRemovesMatchingElementsAndUsesBulkRemove() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        // Enough elements to exercise bitset logic in bulkRemove (nBits/setBit/isClear)
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5, 6));
+
+        Predicate<Integer> even = x -> x % 2 == 0;
+        boolean changed = pq.removeIf(even); // removeIf -> bulkRemove
+        assertTrue(changed);
+
+        List<Integer> remaining = new ArrayList<>();
+        Integer v;
+        while ((v = pq.poll()) != null) {
+            remaining.add(v);
+        }
+        assertEquals(Arrays.asList(1, 3, 5), remaining);
+    }
+
+    @Test
+    public void testRemoveIfWithNoMatchReturnsFalse() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 3, 5));
+
+        boolean changed = pq.removeIf(x -> x % 2 == 0);
+        assertFalse(changed);
+        assertEquals(3, pq.size());
+    }
+
+    @Test
+    public void testRemoveAllRemovesAllInCollection() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5));
+
+        boolean changed = pq.removeAll(Arrays.asList(2, 4, 6)); // 6 not present
+        assertTrue(changed);
+
+        List<Integer> remaining = new ArrayList<>();
+        Integer v;
+        while ((v = pq.poll()) != null) {
+            remaining.add(v);
+        }
+        remaining.sort(Integer::compareTo);
+        assertEquals(Arrays.asList(1, 3, 5), remaining);
+    }
+
+    @Test
+    public void testRetainAllKeepsOnlyElementsInCollection() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5));
+
+        boolean changed = pq.retainAll(Arrays.asList(2, 4, 6));
+        assertTrue(changed);
+
+        List<Integer> remaining = new ArrayList<>();
+        Integer v;
+        while ((v = pq.poll()) != null) {
+            remaining.add(v);
+        }
+        remaining.sort(Integer::compareTo);
+        assertEquals(Arrays.asList(2, 4), remaining);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testRemoveIfNullPredicateThrows() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(1);
+        pq.removeIf(null); // should throw NPE via Objects.requireNonNull
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testRemoveAllNullCollectionThrows() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(1);
+        pq.removeAll(null); // Objects.requireNonNull
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testRetainAllNullCollectionThrows() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(1);
+        pq.retainAll(null); // Objects.requireNonNull
+    }
+
+    /* ------------------------------------------------------------------
+     * forEach(Consumer)
+     * ------------------------------------------------------------------ */
+
+    @Test
+    public void testForEachVisitsAllElements() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3));
+
+        final int[] sum = new int[1];
+        pq.forEach(x -> sum[0] += x); // forEach(Consumer)
+
+        assertEquals(1 + 2 + 3, sum[0]);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testForEachNullConsumerThrows() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.add(1);
+        pq.forEach(null);
+    }
+
+    @Test
+    public void testForEachFailFastOnConcurrentModification() {
+        PriorityQueue<Integer> pq = new PriorityQueue<>();
+        pq.addAll(Arrays.asList(1, 2, 3));
+
+        try {
+            pq.forEach(e -> {
+                if (e == 2) {
+                    pq.add(99); // structural modification during forEach
+                }
+            });
+            fail("Expected ConcurrentModificationException");
+        } catch (ConcurrentModificationException expected) {
+            // ok
+        }
+    }
+}
