@@ -1,0 +1,722 @@
+import org.junit.Test;
+import org.junit.Before;
+import org.junit.After;
+import static org.junit.Assert.*;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+/**
+ * Comprehensive JUnit 4.11 test suite for java.util.PriorityQueue
+ * OpenJDK implementation
+ */
+public class ClaudePCP {
+    
+    private PriorityQueue<Integer> pq;
+    private Comparator<Integer> reverseComparator;
+    
+    @Before
+    public void setUp() {
+        pq = new PriorityQueue<>();
+        reverseComparator = Collections.reverseOrder();
+    }
+    
+    @After
+    public void tearDown() {
+        pq = null;
+    }
+    
+    // ========== Constructor Tests ==========
+    
+    @Test
+    public void testDefaultConstructor() {
+        PriorityQueue<Integer> queue = new PriorityQueue<>();
+        assertNotNull(queue);
+        assertEquals(0, queue.size());
+        assertTrue(queue.isEmpty());
+        assertNull(queue.comparator());
+    }
+    
+    @Test
+    public void testConstructorWithInitialCapacity() {
+        PriorityQueue<Integer> queue = new PriorityQueue<>(20);
+        assertNotNull(queue);
+        assertEquals(0, queue.size());
+        assertNull(queue.comparator());
+    }
+    
+    @Test(expected = IllegalArgumentException.class)
+    public void testConstructorWithInvalidCapacity() {
+        new PriorityQueue<>(0);
+    }
+    
+    @Test(expected = IllegalArgumentException.class)
+    public void testConstructorWithNegativeCapacity() {
+        new PriorityQueue<>(-5);
+    }
+    
+    @Test
+    public void testConstructorWithComparator() {
+        PriorityQueue<Integer> queue = new PriorityQueue<>(reverseComparator);
+        assertNotNull(queue);
+        assertEquals(0, queue.size());
+        assertNotNull(queue.comparator());
+        assertEquals(reverseComparator, queue.comparator());
+    }
+    
+    @Test
+    public void testConstructorWithCapacityAndComparator() {
+        PriorityQueue<Integer> queue = new PriorityQueue<>(15, reverseComparator);
+        assertNotNull(queue);
+        assertEquals(0, queue.size());
+        assertEquals(reverseComparator, queue.comparator());
+    }
+    
+    @Test
+    public void testConstructorWithCollection() {
+        List<Integer> list = Arrays.asList(5, 2, 8, 1, 9);
+        PriorityQueue<Integer> queue = new PriorityQueue<>(list);
+        assertEquals(5, queue.size());
+        assertEquals(Integer.valueOf(1), queue.peek());
+    }
+    
+    @Test
+    public void testConstructorWithPriorityQueue() {
+        PriorityQueue<Integer> source = new PriorityQueue<>(reverseComparator);
+        source.addAll(Arrays.asList(3, 7, 2));
+        PriorityQueue<Integer> queue = new PriorityQueue<>(source);
+        assertEquals(3, queue.size());
+        assertEquals(reverseComparator, queue.comparator());
+        assertEquals(Integer.valueOf(7), queue.peek());
+    }
+    
+    @Test
+    public void testConstructorWithSortedSet() {
+        SortedSet<Integer> sortedSet = new TreeSet<>(reverseComparator);
+        sortedSet.addAll(Arrays.asList(5, 2, 8, 1));
+        PriorityQueue<Integer> queue = new PriorityQueue<>(sortedSet);
+        assertEquals(4, queue.size());
+        assertEquals(reverseComparator, queue.comparator());
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testConstructorWithNullElementInCollection() {
+        List<Integer> list = new ArrayList<>();
+        list.add(1);
+        list.add(null);
+        list.add(3);
+        new PriorityQueue<>(list);
+    }
+    
+    // ========== Add/Offer Tests ==========
+    
+    @Test
+    public void testAdd() {
+        assertTrue(pq.add(5));
+        assertEquals(1, pq.size());
+        assertEquals(Integer.valueOf(5), pq.peek());
+    }
+    
+    @Test
+    public void testAddMultiple() {
+        assertTrue(pq.add(5));
+        assertTrue(pq.add(2));
+        assertTrue(pq.add(8));
+        assertEquals(3, pq.size());
+        assertEquals(Integer.valueOf(2), pq.peek());
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testAddNull() {
+        pq.add(null);
+    }
+    
+    @Test
+    public void testOffer() {
+        assertTrue(pq.offer(10));
+        assertEquals(1, pq.size());
+        assertEquals(Integer.valueOf(10), pq.peek());
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testOfferNull() {
+        pq.offer(null);
+    }
+    
+    @Test
+    public void testOfferMaintainsHeapProperty() {
+        pq.offer(5);
+        pq.offer(3);
+        pq.offer(7);
+        pq.offer(1);
+        pq.offer(9);
+        assertEquals(Integer.valueOf(1), pq.peek());
+    }
+    
+    // ========== Peek Tests ==========
+    
+    @Test
+    public void testPeekEmpty() {
+        assertNull(pq.peek());
+    }
+    
+    @Test
+    public void testPeekNonEmpty() {
+        pq.add(5);
+        pq.add(2);
+        pq.add(8);
+        assertEquals(Integer.valueOf(2), pq.peek());
+        assertEquals(3, pq.size()); // Size unchanged
+    }
+    
+    @Test
+    public void testPeekDoesNotRemove() {
+        pq.add(10);
+        pq.peek();
+        pq.peek();
+        assertEquals(1, pq.size());
+    }
+    
+    // ========== Poll Tests ==========
+    
+    @Test
+    public void testPollEmpty() {
+        assertNull(pq.poll());
+    }
+    
+    @Test
+    public void testPollSingleElement() {
+        pq.add(5);
+        assertEquals(Integer.valueOf(5), pq.poll());
+        assertEquals(0, pq.size());
+        assertNull(pq.peek());
+    }
+    
+    @Test
+    public void testPollMultipleElements() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1, 9, 3));
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(3), pq.poll());
+        assertEquals(3, pq.size());
+    }
+    
+    @Test
+    public void testPollAll() {
+        pq.addAll(Arrays.asList(3, 1, 2));
+        pq.poll();
+        pq.poll();
+        pq.poll();
+        assertNull(pq.poll());
+        assertEquals(0, pq.size());
+    }
+    
+    // ========== Remove Tests ==========
+    
+    @Test
+    public void testRemoveExistingElement() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1));
+        assertTrue(pq.remove(5));
+        assertEquals(3, pq.size());
+        assertFalse(pq.contains(5));
+    }
+    
+    @Test
+    public void testRemoveNonExistingElement() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        assertFalse(pq.remove(10));
+        assertEquals(3, pq.size());
+    }
+    
+    @Test
+    public void testRemoveNull() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        assertFalse(pq.remove(null));
+    }
+    
+    @Test
+    public void testRemoveHead() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1, 9));
+        assertTrue(pq.remove(1));
+        assertEquals(Integer.valueOf(2), pq.peek());
+    }
+    
+    @Test
+    public void testRemoveMaintainsHeapProperty() {
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5, 6, 7));
+        pq.remove(3);
+        List<Integer> result = new ArrayList<>();
+        while (!pq.isEmpty()) {
+            result.add(pq.poll());
+        }
+        for (int i = 0; i < result.size() - 1; i++) {
+            assertTrue(result.get(i) <= result.get(i + 1));
+        }
+    }
+    
+    // ========== Contains Tests ==========
+    
+    @Test
+    public void testContainsExisting() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        assertTrue(pq.contains(5));
+        assertTrue(pq.contains(2));
+        assertTrue(pq.contains(8));
+    }
+    
+    @Test
+    public void testContainsNonExisting() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        assertFalse(pq.contains(10));
+    }
+    
+    @Test
+    public void testContainsNull() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        assertFalse(pq.contains(null));
+    }
+    
+    @Test
+    public void testContainsEmpty() {
+        assertFalse(pq.contains(5));
+    }
+    
+    // ========== Size Tests ==========
+    
+    @Test
+    public void testSizeEmpty() {
+        assertEquals(0, pq.size());
+    }
+    
+    @Test
+    public void testSizeAfterAdd() {
+        pq.add(1);
+        assertEquals(1, pq.size());
+        pq.add(2);
+        assertEquals(2, pq.size());
+    }
+    
+    @Test
+    public void testSizeAfterPoll() {
+        pq.addAll(Arrays.asList(1, 2, 3));
+        pq.poll();
+        assertEquals(2, pq.size());
+    }
+    
+    // ========== Clear Tests ==========
+    
+    @Test
+    public void testClear() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1, 9));
+        pq.clear();
+        assertEquals(0, pq.size());
+        assertNull(pq.peek());
+    }
+    
+    @Test
+    public void testClearEmpty() {
+        pq.clear();
+        assertEquals(0, pq.size());
+    }
+    
+    // ========== ToArray Tests ==========
+    
+    @Test
+    public void testToArray() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        Object[] array = pq.toArray();
+        assertEquals(3, array.length);
+        assertTrue(Arrays.asList(array).containsAll(Arrays.asList(2, 5, 8)));
+    }
+    
+    @Test
+    public void testToArrayEmpty() {
+        Object[] array = pq.toArray();
+        assertEquals(0, array.length);
+    }
+    
+    @Test
+    public void testToArrayTyped() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        Integer[] array = pq.toArray(new Integer[0]);
+        assertEquals(3, array.length);
+        assertTrue(Arrays.asList(array).containsAll(Arrays.asList(2, 5, 8)));
+    }
+    
+    @Test
+    public void testToArrayTypedLargerArray() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        Integer[] array = new Integer[10];
+        array[3] = 99;
+        Integer[] result = pq.toArray(array);
+        assertSame(array, result);
+        assertEquals(3, result.length); // Elements copied
+        assertNull(result[3]); // Null terminator
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testToArrayNullParameter() {
+        pq.add(1);
+        pq.toArray((Integer[]) null);
+    }
+    
+    // ========== Iterator Tests ==========
+    
+    @Test
+    public void testIterator() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1));
+        Iterator<Integer> it = pq.iterator();
+        int count = 0;
+        while (it.hasNext()) {
+            assertNotNull(it.next());
+            count++;
+        }
+        assertEquals(4, count);
+    }
+    
+    @Test
+    public void testIteratorHasNext() {
+        pq.add(1);
+        Iterator<Integer> it = pq.iterator();
+        assertTrue(it.hasNext());
+        it.next();
+        assertFalse(it.hasNext());
+    }
+    
+    @Test(expected = NoSuchElementException.class)
+    public void testIteratorNextOnEmpty() {
+        Iterator<Integer> it = pq.iterator();
+        it.next();
+    }
+    
+    @Test
+    public void testIteratorRemove() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1));
+        Iterator<Integer> it = pq.iterator();
+        it.next();
+        it.remove();
+        assertEquals(3, pq.size());
+    }
+    
+    @Test(expected = IllegalStateException.class)
+    public void testIteratorRemoveWithoutNext() {
+        pq.add(1);
+        Iterator<Integer> it = pq.iterator();
+        it.remove();
+    }
+    
+    @Test(expected = ConcurrentModificationException.class)
+    public void testIteratorConcurrentModification() {
+        pq.addAll(Arrays.asList(1, 2, 3));
+        Iterator<Integer> it = pq.iterator();
+        it.next();
+        pq.add(4);
+        it.next();
+    }
+    
+    @Test
+    public void testIteratorRemoveMultiple() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1, 9));
+        Iterator<Integer> it = pq.iterator();
+        while (it.hasNext()) {
+            Integer val = it.next();
+            if (val % 2 == 0) {
+                it.remove();
+            }
+        }
+        assertFalse(pq.contains(2));
+        assertFalse(pq.contains(8));
+    }
+    
+    // ========== Comparator Tests ==========
+    
+    @Test
+    public void testComparatorNull() {
+        assertNull(pq.comparator());
+    }
+    
+    @Test
+    public void testComparatorNonNull() {
+        PriorityQueue<Integer> queue = new PriorityQueue<>(reverseComparator);
+        assertEquals(reverseComparator, queue.comparator());
+    }
+    
+    @Test
+    public void testCustomComparatorOrdering() {
+        PriorityQueue<Integer> queue = new PriorityQueue<>(reverseComparator);
+        queue.addAll(Arrays.asList(5, 2, 8, 1, 9));
+        assertEquals(Integer.valueOf(9), queue.poll());
+        assertEquals(Integer.valueOf(8), queue.poll());
+    }
+    
+    // ========== Spliterator Tests ==========
+    
+    @Test
+    public void testSpliterator() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        assertNotNull(spliterator);
+        assertEquals(4, spliterator.estimateSize());
+    }
+    
+    @Test
+    public void testSpliteratorCharacteristics() {
+        Spliterator<Integer> spliterator = pq.spliterator();
+        assertTrue((spliterator.characteristics() & Spliterator.SIZED) != 0);
+        assertTrue((spliterator.characteristics() & Spliterator.SUBSIZED) != 0);
+        assertTrue((spliterator.characteristics() & Spliterator.NONNULL) != 0);
+    }
+    
+    @Test
+    public void testSpliteratorTryAdvance() {
+        pq.addAll(Arrays.asList(5, 2, 8));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        AtomicInteger count = new AtomicInteger(0);
+        spliterator.tryAdvance(e -> count.incrementAndGet());
+        assertEquals(1, count.get());
+    }
+    
+    @Test
+    public void testSpliteratorForEachRemaining() {
+        pq.addAll(Arrays.asList(5, 2, 8, 1));
+        Spliterator<Integer> spliterator = pq.spliterator();
+        AtomicInteger count = new AtomicInteger(0);
+        spliterator.forEachRemaining(e -> count.incrementAndGet());
+        assertEquals(4, count.get());
+    }
+    
+    @Test
+    public void testSpliteratorTrySplit() {
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8));
+        Spliterator<Integer> s1 = pq.spliterator();
+        Spliterator<Integer> s2 = s1.trySplit();
+        assertNotNull(s2);
+        assertTrue(s1.estimateSize() > 0);
+        assertTrue(s2.estimateSize() > 0);
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testSpliteratorTryAdvanceNullAction() {
+        pq.add(1);
+        Spliterator<Integer> spliterator = pq.spliterator();
+        spliterator.tryAdvance(null);
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testSpliteratorForEachRemainingNullAction() {
+        pq.add(1);
+        Spliterator<Integer> spliterator = pq.spliterator();
+        spliterator.forEachRemaining(null);
+    }
+    
+    // ========== RemoveIf Tests ==========
+    
+    @Test
+    public void testRemoveIf() {
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5, 6));
+        boolean removed = pq.removeIf(x -> x % 2 == 0);
+        assertTrue(removed);
+        assertEquals(3, pq.size());
+        assertFalse(pq.contains(2));
+        assertFalse(pq.contains(4));
+        assertFalse(pq.contains(6));
+    }
+    
+    @Test
+    public void testRemoveIfNoMatch() {
+        pq.addAll(Arrays.asList(1, 3, 5));
+        boolean removed = pq.removeIf(x -> x % 2 == 0);
+        assertFalse(removed);
+        assertEquals(3, pq.size());
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testRemoveIfNullPredicate() {
+        pq.add(1);
+        pq.removeIf(null);
+    }
+    
+    @Test
+    public void testRemoveIfAll() {
+        pq.addAll(Arrays.asList(2, 4, 6, 8));
+        pq.removeIf(x -> x % 2 == 0);
+        assertEquals(0, pq.size());
+    }
+    
+    // ========== RemoveAll Tests ==========
+    
+    @Test
+    public void testRemoveAll() {
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5));
+        Collection<Integer> toRemove = Arrays.asList(2, 4);
+        assertTrue(pq.removeAll(toRemove));
+        assertEquals(3, pq.size());
+        assertFalse(pq.contains(2));
+        assertFalse(pq.contains(4));
+    }
+    
+    @Test
+    public void testRemoveAllNoMatch() {
+        pq.addAll(Arrays.asList(1, 2, 3));
+        Collection<Integer> toRemove = Arrays.asList(5, 6);
+        assertFalse(pq.removeAll(toRemove));
+        assertEquals(3, pq.size());
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testRemoveAllNull() {
+        pq.add(1);
+        pq.removeAll(null);
+    }
+    
+    // ========== RetainAll Tests ==========
+    
+    @Test
+    public void testRetainAll() {
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5));
+        Collection<Integer> toRetain = Arrays.asList(2, 4, 6);
+        assertTrue(pq.retainAll(toRetain));
+        assertEquals(2, pq.size());
+        assertTrue(pq.contains(2));
+        assertTrue(pq.contains(4));
+        assertFalse(pq.contains(1));
+    }
+    
+    @Test
+    public void testRetainAllNoChange() {
+        pq.addAll(Arrays.asList(1, 2, 3));
+        Collection<Integer> toRetain = Arrays.asList(1, 2, 3, 4);
+        assertFalse(pq.retainAll(toRetain));
+        assertEquals(3, pq.size());
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testRetainAllNull() {
+        pq.add(1);
+        pq.retainAll(null);
+    }
+    
+    // ========== ForEach Tests ==========
+    
+    @Test
+    public void testForEach() {
+        pq.addAll(Arrays.asList(1, 2, 3, 4, 5));
+        AtomicInteger sum = new AtomicInteger(0);
+        pq.forEach(sum::addAndGet);
+        assertEquals(15, sum.get());
+    }
+    
+    @Test(expected = NullPointerException.class)
+    public void testForEachNullAction() {
+        pq.add(1);
+        pq.forEach(null);
+    }
+    
+    @Test(expected = ConcurrentModificationException.class)
+    public void testForEachConcurrentModification() {
+        pq.addAll(Arrays.asList(1, 2, 3));
+        pq.forEach(e -> pq.add(10));
+    }
+    
+    // ========== Edge Cases and Growth Tests ==========
+    
+    @Test
+    public void testGrowth() {
+        for (int i = 0; i < 100; i++) {
+            pq.add(i);
+        }
+        assertEquals(100, pq.size());
+    }
+    
+    @Test
+    public void testLargeDataset() {
+        for (int i = 1000; i > 0; i--) {
+            pq.add(i);
+        }
+        assertEquals(Integer.valueOf(1), pq.peek());
+        assertEquals(1000, pq.size());
+    }
+    
+    @Test
+    public void testHeapPropertyAfterManyOperations() {
+        Random rand = new Random(42);
+        for (int i = 0; i < 100; i++) {
+            pq.add(rand.nextInt(1000));
+        }
+        Integer prev = pq.poll();
+        while (!pq.isEmpty()) {
+            Integer curr = pq.poll();
+            assertTrue(prev <= curr);
+            prev = curr;
+        }
+    }
+    
+    @Test
+    public void testDuplicateElements() {
+        pq.addAll(Arrays.asList(5, 5, 5, 2, 2));
+        assertEquals(5, pq.size());
+        assertEquals(Integer.valueOf(2), pq.poll());
+        assertEquals(Integer.valueOf(2), pq.poll());
+    }
+    
+    @Test
+    public void testSingleElementOperations() {
+        pq.add(42);
+        assertEquals(Integer.valueOf(42), pq.peek());
+        assertEquals(Integer.valueOf(42), pq.poll());
+        assertTrue(pq.isEmpty());
+    }
+    
+    @Test
+    public void testAlternatingAddPoll() {
+        pq.add(5);
+        pq.add(2);
+        assertEquals(Integer.valueOf(2), pq.poll());
+        pq.add(7);
+        pq.add(1);
+        assertEquals(Integer.valueOf(1), pq.poll());
+        assertEquals(2, pq.size());
+    }
+    
+    // ========== Natural Ordering Tests ==========
+    
+    @Test
+    public void testNaturalOrdering() {
+        pq.addAll(Arrays.asList(9, 3, 7, 1, 5));
+        List<Integer> sorted = new ArrayList<>();
+        while (!pq.isEmpty()) {
+            sorted.add(pq.poll());
+        }
+        assertEquals(Arrays.asList(1, 3, 5, 7, 9), sorted);
+    }
+    
+    @Test
+    public void testStringNaturalOrdering() {
+        PriorityQueue<String> strQueue = new PriorityQueue<>();
+        strQueue.addAll(Arrays.asList("dog", "cat", "bird", "ant"));
+        assertEquals("ant", strQueue.poll());
+        assertEquals("bird", strQueue.poll());
+    }
+    
+    // ========== Empty Queue Operations ==========
+    
+    @Test
+    public void testIteratorOnEmpty() {
+        Iterator<Integer> it = pq.iterator();
+        assertFalse(it.hasNext());
+    }
+    
+    @Test
+    public void testForEachOnEmpty() {
+        AtomicInteger count = new AtomicInteger(0);
+        pq.forEach(e -> count.incrementAndGet());
+        assertEquals(0, count.get());
+    }
+    
+    @Test
+    public void testRemoveIfOnEmpty() {
+        assertFalse(pq.removeIf(x -> true));
+    }
+}
