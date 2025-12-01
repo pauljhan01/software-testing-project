@@ -1,0 +1,505 @@
+package java.util;
+
+import org.junit.Test;
+import org.junit.Before;
+import static org.junit.Assert.*;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.Spliterator;
+
+/**
+ * Test suite for the OpenJDK java.util.PriorityQueue implementation.
+ *
+ * Designed for line-coverage:
+ *  - Exercises all public methods on PriorityQueue, its Iterator, and Spliterator
+ *  - Drives execution through all private helpers (grow, siftUp/Down, heapify,
+ *    initFromCollection/priorityQueue, ensureNonEmpty, bulkRemove, nBits, setBit,
+ *    isClear, getFence, writeObject/readObject, etc.) via public entrypoints.
+ *
+ * Compatible with JUnit 4.11 (no Jupiter).
+ */
+public class GPTPCP {
+
+    private PriorityQueue<Integer> naturalQueue;
+    private Comparator<Integer> reverseComparator;
+
+    @Before
+    public void setUp() {
+        naturalQueue = new PriorityQueue<Integer>();
+        reverseComparator = new Comparator<Integer>() {
+            public int compare(Integer a, Integer b) {
+                return b.compareTo(a);
+            }
+        };
+    }
+
+    /* ============================================================
+     * Constructors
+     * ============================================================
+     */
+
+    @Test
+    public void testConstructor_noArg() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        assertEquals(0, q.size());
+        assertNull("natural-order queue comparator must be null", q.comparator());
+        assertNull("peek on empty should be null", q.peek());
+    }
+
+    @Test
+    public void testConstructor_initialCapacity() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(1);
+        q.add(5);
+        q.add(3); // triggers grow(...) and siftUp*
+        assertEquals(2, q.size());
+        assertEquals(Integer.valueOf(3), q.peek());
+    }
+
+    @Test
+    public void testConstructor_comparatorOnly() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(reverseComparator);
+        q.add(1);
+        q.add(3);
+        q.add(2);
+        // reverse ordering: 3 is "smallest" according to comparator
+        assertEquals(reverseComparator, q.comparator());
+        assertEquals(Integer.valueOf(3), q.peek());
+    }
+
+    @Test
+    public void testConstructor_capacityAndComparator() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(2, reverseComparator);
+        q.offer(10);
+        q.offer(5);
+        q.offer(7); // grow + siftUpUsingComparator
+        assertEquals(3, q.size());
+        assertEquals(Integer.valueOf(10), q.peek());
+    }
+
+    @Test
+    public void testConstructor_fromCollection_usesHeapifyAndInitFromCollection() {
+        java.util.List<Integer> source =
+                java.util.Arrays.asList(5, 1, 3, 4, 2);
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(source);
+        assertEquals(source.size(), q.size());
+        // heapify should establish min-heap: head is 1
+        assertEquals(Integer.valueOf(1), q.peek());
+    }
+
+    @Test
+    public void testConstructor_fromPriorityQueue_usesInitFromPriorityQueueAndEnsureNonEmpty() {
+        PriorityQueue<Integer> base = new PriorityQueue<Integer>();
+        base.add(4);
+        base.add(1);
+        base.add(3);
+
+        PriorityQueue<Integer> copy = new PriorityQueue<Integer>(base);
+        assertEquals(base.size(), copy.size());
+        assertEquals(base.comparator(), copy.comparator());
+        assertEquals(base.peek(), copy.peek());
+        // Modifying copy should not affect base (deep-ish copy of backing array)
+        copy.add(0);
+        assertEquals(Integer.valueOf(0), copy.peek());
+        assertEquals(Integer.valueOf(1), base.peek());
+    }
+
+    @Test
+    public void testConstructor_fromSortedSet_usesSortedSetOrdering() {
+        SortedSet<Integer> sorted = new TreeSet<Integer>(reverseComparator);
+        sorted.add(1);
+        sorted.add(2);
+        sorted.add(3);
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(sorted);
+        // should inherit comparator from SortedSet
+        assertEquals(reverseComparator, q.comparator());
+        assertEquals(Integer.valueOf(3), q.peek());
+    }
+
+    /* ============================================================
+     * Basic queue operations: add/offer/peek/poll/remove/contains
+     * ============================================================
+     */
+
+    @Test
+    public void testAddOfferPeekPollAndSize_naturalOrdering() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        assertTrue(q.add(3));         // add delegates to offer, uses siftUpComparable
+        assertTrue(q.offer(1));
+        assertTrue(q.offer(2));
+        assertEquals(3, q.size());
+
+        // head is smallest
+        assertEquals(Integer.valueOf(1), q.peek());
+        assertEquals(Integer.valueOf(1), q.poll()); // uses siftDownComparable
+        assertEquals(2, q.size());
+        assertEquals(Integer.valueOf(2), q.poll());
+        assertEquals(Integer.valueOf(3), q.poll());
+        assertNull("poll on empty returns null", q.poll());
+        assertEquals(0, q.size());
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testAddNullDisallowed() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(null); // should throw NPE
+    }
+
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    @Test(expected = ClassCastException.class)
+    public void testNonComparableElementsCauseClassCastException() {
+        // Raw PriorityQueue relying on natural ordering
+        PriorityQueue q = new PriorityQueue();
+        // First add usually succeeds; second triggers comparison -> CCE
+        q.add(new Object());
+        q.add(new Object());
+    }
+
+    @Test
+    public void testRemoveObjectAndContains_useIndexOfAndSiftDown() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(5);
+        q.add(1);
+        q.add(3);
+        q.add(2);
+        assertTrue(q.contains(3));  // uses indexOf internally
+        assertTrue(q.remove(Integer.valueOf(3))); // uses remove(Object) + removeAt + siftDown*
+        assertFalse(q.contains(3));
+        assertEquals(3, q.size());
+    }
+
+    @Test
+    public void testClearResetsQueue() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        q.add(2);
+        q.clear();
+        assertEquals(0, q.size());
+        assertNull(q.peek());
+        assertFalse(q.contains(1));
+    }
+
+    @Test
+    public void testToArrayObjectAndTypedArrays() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(3);
+        q.add(1);
+        q.add(2);
+
+        Object[] arr = q.toArray();
+        assertEquals(3, arr.length);
+        // Contains all elements, heap order not guaranteed beyond head
+        java.util.List<Object> asList = java.util.Arrays.asList(arr);
+        assertTrue(asList.contains(1));
+        assertTrue(asList.contains(2));
+        assertTrue(asList.contains(3));
+
+        Integer[] target = new Integer[2]; // smaller than size -> new array created
+        Integer[] result = q.toArray(target);
+        assertEquals(3, result.length);
+        asList = java.util.Arrays.<Object>asList(result);
+        assertTrue(asList.contains(1));
+        assertTrue(asList.contains(2));
+        assertTrue(asList.contains(3));
+
+        Integer[] big = new Integer[5]; // larger than size -> same array, null-terminated
+        Integer[] result2 = q.toArray(big);
+        assertSame(big, result2);
+        assertEquals(3, result2[0] != null ? 1 : 0 + (result2[1] != null ? 1 : 0) + (result2[2] != null ? 1 : 0));
+        assertNull(result2[3]);
+        assertNull(result2[4]);
+    }
+
+    @Test
+    public void testComparatorGetter() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(reverseComparator);
+        assertEquals(reverseComparator, q.comparator());
+        PriorityQueue<Integer> natural = new PriorityQueue<Integer>();
+        assertNull(natural.comparator());
+    }
+
+    /* ============================================================
+     * Iterator (Itr) – hasNext / next / remove
+     * ============================================================
+     */
+
+    @Test
+    public void testIteratorTraversalAndRemove() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(2);
+        q.add(1);
+        q.add(3);
+
+        Iterator<Integer> it = q.iterator();
+        java.util.List<Integer> seen = new ArrayList<Integer>();
+        while (it.hasNext()) {  // uses Itr.hasNext
+            Integer v = it.next();  // uses Itr.next
+            seen.add(v);
+            if (v == 2) {
+                it.remove();    // uses Itr.remove with removeAt/removeEq
+            }
+        }
+        assertEquals(3, seen.size());
+        assertFalse("element removed via iterator should be gone", q.contains(2));
+    }
+
+    @Test(expected = ConcurrentModificationException.class)
+    public void testIteratorFailFastOnConcurrentModification() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        q.add(2);
+        Iterator<Integer> it = q.iterator();
+        assertTrue(it.hasNext());
+        q.add(3);  // structural modification after iterator created
+        it.next(); // should throw ConcurrentModificationException
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testIteratorRemoveWithoutNextThrowsIllegalState() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        Iterator<Integer> it = q.iterator();
+        // remove before first next() -> IllegalStateException
+        it.remove();
+    }
+
+    @Test(expected = NoSuchElementException.class)
+    public void testIteratorNextPastEndThrowsNoSuchElement() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        Iterator<Integer> it = q.iterator();
+        assertNotNull(it.next());
+        assertFalse(it.hasNext());
+        it.next(); // beyond end
+    }
+
+    /* ============================================================
+     * Spliterator – spliterator(), trySplit(), forEachRemaining(),
+     *               tryAdvance(), estimateSize(), characteristics()
+     * ============================================================
+     */
+
+    @Test
+    public void testSpliteratorBasicTraversalAndEstimateSize() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        q.add(2);
+        q.add(3);
+
+        Spliterator<Integer> sp = q.spliterator(); // creates PriorityQueueSpliterator
+        assertTrue(sp.estimateSize() >= 0);
+
+        final java.util.List<Integer> collected = new ArrayList<Integer>();
+        sp.forEachRemaining(new Consumer<Integer>() {
+            public void accept(Integer value) {
+                collected.add(value);
+            }
+        });
+        assertEquals(3, collected.size());
+        assertEquals(0, sp.estimateSize());
+    }
+
+    @Test
+    public void testSpliteratorTrySplitAndCharacteristics() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        for (int i = 0; i < 10; i++) {
+            q.add(i);
+        }
+        Spliterator<Integer> sp1 = q.spliterator();
+        Spliterator<Integer> sp2 = sp1.trySplit(); // uses getFence and new PriorityQueueSpliterator
+
+        int ch = sp1.characteristics();
+        // Must have SIZED | SUBSIZED | NONNULL
+        assertTrue((ch & Spliterator.SIZED) != 0);
+        assertTrue((ch & Spliterator.SUBSIZED) != 0);
+        assertTrue((ch & Spliterator.NONNULL) != 0);
+
+        java.util.Set<Integer> all = new HashSet<Integer>();
+        if (sp2 != null) {
+            sp2.forEachRemaining(new Consumer<Integer>() {
+                public void accept(Integer value) {
+                    all.add(value);
+                }
+            });
+        }
+        sp1.forEachRemaining(new Consumer<Integer>() {
+            public void accept(Integer value) {
+                all.add(value);
+            }
+        });
+        assertEquals(10, all.size());
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testSpliteratorForEachRemainingNullActionThrowsNPE() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        Spliterator<Integer> sp = q.spliterator();
+        sp.forEachRemaining((Consumer<Integer>) null);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void testSpliteratorTryAdvanceNullActionThrowsNPE() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        Spliterator<Integer> sp = q.spliterator();
+        sp.tryAdvance((Consumer<Integer>) null);
+    }
+
+    /* ============================================================
+     * Bulk operations – removeIf, removeAll, retainAll, forEach
+     * (exercise bulkRemove, nBits, setBit, isClear, forEach)
+     * ============================================================
+     */
+
+    @Test
+    public void testRemoveIfUsesPredicateAndBulkRemove() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        for (int i = 0; i < 10; i++) {
+            q.add(i);
+        }
+        boolean changed = q.removeIf(new Predicate<Integer>() {
+            public boolean test(Integer value) {
+                return value % 2 == 0; // remove evens
+            }
+        });
+        assertTrue(changed);
+        for (int i = 0; i < 10; i++) {
+            if (i % 2 == 0) {
+                assertFalse(q.contains(i));
+            } else {
+                assertTrue(q.contains(i));
+            }
+        }
+    }
+
+    @Test
+    public void testRemoveAllRemovesMatchingCollection() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        q.add(2);
+        q.add(3);
+        java.util.List<Integer> toRemove =
+                java.util.Arrays.asList(1, 3, 5);
+        assertTrue(q.removeAll(toRemove)); // uses bulkRemove(...)
+
+        assertFalse(q.contains(1));
+        assertTrue(q.contains(2));
+        assertFalse(q.contains(3));
+    }
+
+    @Test
+    public void testRetainAllKeepsOnlyGivenCollection() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        q.add(2);
+        q.add(3);
+        java.util.List<Integer> keep =
+                java.util.Arrays.asList(2, 4);
+        assertTrue(q.retainAll(keep)); // uses bulkRemove(...)
+
+        assertEquals(1, q.size());
+        assertTrue(q.contains(2));
+        assertFalse(q.contains(1));
+        assertFalse(q.contains(3));
+    }
+
+    @Test
+    public void testForEachAppliesActionToAllElements() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        q.add(2);
+        q.add(3);
+
+        final java.util.List<Integer> visited = new ArrayList<Integer>();
+        q.forEach(new Consumer<Integer>() {
+            public void accept(Integer value) {
+                visited.add(value);
+            }
+        });
+        assertEquals(3, visited.size());
+        assertTrue(visited.contains(1));
+        assertTrue(visited.contains(2));
+        assertTrue(visited.contains(3));
+    }
+
+    @Test(expected = ConcurrentModificationException.class)
+    public void testForEachDetectsConcurrentModification() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        q.add(1);
+        q.add(2);
+
+        q.forEach(new Consumer<Integer>() {
+            public void accept(Integer value) {
+                // Structural modification during forEach should cause CME
+                q.add(3);
+            }
+        });
+    }
+
+    /* ============================================================
+     * Serialization – exercises private writeObject/readObject
+     * ============================================================
+     */
+
+    @Test
+    public void testSerializationRoundTrip_preservesElementsAndComparator() throws Exception {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(reverseComparator);
+        q.add(3);
+        q.add(1);
+        q.add(2);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(q);              // triggers private writeObject
+        oos.close();
+
+        ObjectInputStream ois = new ObjectInputStream(
+                new ByteArrayInputStream(baos.toByteArray()));
+        @SuppressWarnings("unchecked")
+        PriorityQueue<Integer> copy =
+                (PriorityQueue<Integer>) ois.readObject(); // private readObject
+        ois.close();
+
+        assertEquals(q.size(), copy.size());
+        assertEquals(q.comparator().getClass(), copy.comparator().getClass());
+
+        // Comparator ordering preserved
+        assertEquals(Integer.valueOf(3), copy.poll());
+        assertEquals(Integer.valueOf(2), copy.poll());
+        assertEquals(Integer.valueOf(1), copy.poll());
+    }
+
+    /* ============================================================
+     * Misc sanity tests – peek on empty, poll on empty, etc.
+     * ============================================================
+     */
+
+    @Test
+    public void testPeekAndPollOnEmptyAreNull() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>();
+        assertNull(q.peek());
+        assertNull(q.poll());
+    }
+
+    @Test
+    public void testHeavyInsertTriggersGrowAndHeapifyPaths() {
+        PriorityQueue<Integer> q = new PriorityQueue<Integer>(1);
+        for (int i = 0; i < 100; i++) {
+            q.add(i); // will repeatedly trigger grow(), siftUp, siftDown
+        }
+        assertEquals(100, q.size());
+        // Ensure heap property still holds (monotone increasing polls)
+        int last = -1;
+        Integer v;
+        while ((v = q.poll()) != null) {
+            assertTrue(v >= last);
+            last = v;
+        }
+    }
+}
